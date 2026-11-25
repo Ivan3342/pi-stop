@@ -383,34 +383,6 @@ export default function HomeScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       />
-
-      {/* Sticky Bottom CTA ("Red vožnje") */}
-      <SafeAreaView
-        edges={['bottom']}
-        style={[
-          styles.footerContainer,
-          {
-            backgroundColor: theme.footerBg,
-            borderTopColor: theme.footerBorder,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => {
-            // Navigate to timetable screen or open modal
-            // router.push('/timetable');
-          }}
-          android_ripple={{ color: 'rgba(255, 255, 255, 0.2)' }}
-          style={({ pressed }) => [
-            styles.ctaButton,
-            {
-              backgroundColor: pressed ? theme.accentBluePressed : theme.accentBlue,
-            },
-          ]}
-        >
-          <Text style={styles.ctaButtonText}>Red vožnje</Text>
-        </Pressable>
-      </SafeAreaView>
     </SafeAreaView>
   );
 }
