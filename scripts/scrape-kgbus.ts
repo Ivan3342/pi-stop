@@ -1,6 +1,6 @@
-import * as cheerio from 'cheerio';
 import fs from 'fs';
 import path from 'path';
+import { chromium, Page } from 'playwright';
 
 export interface DirectionSchedule {
   directionName: string;
@@ -17,200 +17,219 @@ export interface LineTimetable {
   directionB: DirectionSchedule;
 }
 
-const TARGET_URL = 'https://www.kgbus.rs/red-voznje-3/';
-const OUTPUT_PATH = path.resolve(__dirname, '../src/data/timetables.json');
+const TARGET_URL = 'https://www.kgbus.rs/red-voznje-3/?script=lat';
+const OUTPUT_PATH = path.resolve(process.cwd(), 'src/data/timetables.json');
 
-// Fallback/Seed structure matching the exact lines in your UI
-const SEED_DATA: LineTimetable[] = [
-  {
-    id: '16',
-    lineNumber: '16',
-    route: 'Veliko Polje → Desimirovac',
-    directionA: {
-      directionName: 'Smer A: Veliko Polje → Desimirovac',
-      workday: ['05:10', '06:05', '07:15', '08:30', '10:00', '11:30', '13:00', '14:15', '15:30', '17:00', '18:30', '20:00', '21:30'],
-      saturday: ['06:00', '08:00', '10:30', '13:00', '15:30', '18:00', '20:30'],
-      sunday: ['07:00', '10:00', '13:30', '17:00', '20:00'],
-    },
-    directionB: {
-      directionName: 'Smer B: Desimirovac → Veliko Polje',
-      workday: ['05:50', '06:50', '08:00', '09:15', '10:45', '12:15', '13:45', '15:00', '16:15', '17:45', '19:15', '20:45', '22:10'],
-      saturday: ['06:45', '08:45', '11:15', '13:45', '16:15', '18:45', '21:15'],
-      sunday: ['07:45', '10:45', '14:15', '17:45', '20:45'],
-    },
-  },
-  {
-    id: '17',
-    lineNumber: '17',
-    route: 'Baljkovac → Dom Starih / Jezero',
-    directionA: {
-      directionName: 'Smer A: Baljkovac → Dom Starih / Jezero',
-      workday: ['05:00', '05:45', '06:30', '07:15', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:15', '19:30', '20:45', '22:00'],
-      saturday: ['05:30', '07:00', '08:30', '10:00', '11:30', '13:00', '14:30', '16:00', '17:30', '19:00', '20:30'],
-      sunday: ['06:30', '08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'],
-    },
-    directionB: {
-      directionName: 'Smer B: Dom Starih / Jezero → Baljkovac',
-      workday: ['05:35', '06:20', '07:05', '07:50', '08:35', '09:35', '10:35', '11:35', '12:35', '13:35', '14:35', '15:35', '16:35', '17:35', '18:50', '20:05', '21:20', '22:05'],
-      saturday: ['06:05', '07:35', '09:05', '10:35', '12:05', '13:35', '15:05', '16:35', '18:05', '19:35', '21:05'],
-      sunday: ['07:05', '09:05', '11:05', '13:05', '15:05', '17:05', '19:05', '21:05'],
-    },
-  },
-  {
-    id: '2',
-    lineNumber: '2',
-    route: 'Novi Milanovac → Ždraljica / Donja Sabanta',
-    directionA: {
-      directionName: 'Smer A: Novi Milanovac → Ždraljica / Donja Sabanta',
-      workday: ['04:55', '05:40', '06:25', '07:10', '08:10', '09:20', '10:30', '11:40', '12:50', '13:50', '14:50', '15:50', '17:00', '18:15', '19:30', '21:00', '22:15'],
-      saturday: ['05:30', '06:45', '08:15', '09:45', '11:15', '12:45', '14:15', '15:45', '17:15', '18:45', '20:30'],
-      sunday: ['06:30', '08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'],
-    },
-    directionB: {
-      directionName: 'Smer B: Ždraljica / Donja Sabanta → Novi Milanovac',
-      workday: ['05:35', '06:20', '07:05', '07:50', '08:50', '10:00', '11:10', '12:20', '13:30', '14:30', '15:30', '16:30', '17:40', '18:55', '20:10', '21:40'],
-      saturday: ['06:10', '07:25', '08:55', '10:25', '11:55', '13:25', '14:55', '16:25', '17:55', '19:25', '21:10'],
-      sunday: ['07:10', '09:10', '11:10', '13:10', '15:10', '17:10', '19:10', '21:10'],
-    },
-  },
-  {
-    id: '20',
-    lineNumber: '20',
-    route: 'Denino Brdo → Korićani',
-    directionA: {
-      directionName: 'Smer A: Denino Brdo → Korićani',
-      workday: ['05:15', '06:15', '07:15', '08:30', '10:00', '11:30', '13:00', '14:15', '15:30', '17:00', '18:30', '20:00', '21:30'],
-      saturday: ['06:15', '08:15', '10:15', '12:15', '14:15', '16:15', '18:15', '20:15'],
-      sunday: ['07:15', '10:15', '13:15', '16:15', '19:15'],
-    },
-    directionB: {
-      directionName: 'Smer B: Korićani → Denino Brdo',
-      workday: ['05:45', '06:45', '07:45', '09:00', '10:30', '12:00', '13:30', '14:45', '16:00', '17:30', '19:00', '20:30', '22:00'],
-      saturday: ['06:45', '08:45', '10:45', '12:45', '14:45', '16:45', '18:45', '20:45'],
-      sunday: ['07:45', '10:45', '13:45', '16:45', '19:45'],
-    },
-  },
-  {
-    id: '24',
-    lineNumber: '24',
-    route: 'Ćava → Košutnjak Brdo',
-    directionA: {
-      directionName: 'Smer A: Ćava → Košutnjak Brdo',
-      workday: ['05:20', '06:30', '07:40', '09:00', '10:30', '12:00', '13:30', '14:50', '16:10', '17:30', '19:00', '20:30'],
-      saturday: ['06:30', '09:00', '11:30', '14:00', '16:30', '19:00'],
-      sunday: ['07:30', '11:00', '14:30', '18:00'],
-    },
-    directionB: {
-      directionName: 'Smer B: Košutnjak Brdo → Ćava',
-      workday: ['05:55', '07:05', '08:15', '09:35', '11:05', '12:35', '14:05', '15:25', '16:45', '18:05', '19:35', '21:05'],
-      saturday: ['07:05', '09:35', '12:05', '14:35', '17:05', '19:35'],
-      sunday: ['08:05', '11:35', '15:05', '18:35'],
-    },
-  },
-  {
-    id: '25',
-    lineNumber: '25',
-    route: 'Erdeč → Šumski Raj',
-    directionA: {
-      directionName: 'Smer A: Erdeč → Šumski Raj',
-      workday: ['05:10', '06:10', '07:10', '08:20', '09:40', '11:00', '12:20', '13:40', '15:00', '16:20', '17:40', '19:00', '20:30', '22:00'],
-      saturday: ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00'],
-      sunday: ['07:00', '09:30', '12:00', '14:30', '17:00', '19:30'],
-    },
-    directionB: {
-      directionName: 'Smer B: Šumski Raj → Erdeč',
-      workday: ['05:40', '06:40', '07:40', '08:50', '10:10', '11:30', '12:50', '14:10', '15:30', '16:50', '18:10', '19:30', '21:00'],
-      saturday: ['06:30', '08:30', '10:30', '12:30', '14:30', '16:30', '18:30', '20:30'],
-      sunday: ['07:30', '10:00', '12:30', '15:00', '17:30', '20:00'],
-    },
-  },
-  {
-    id: '606',
-    lineNumber: '606',
-    route: 'Autobuska Stanica → Stragari',
-    directionA: {
-      directionName: 'Smer A: Autobuska Stanica → Stragari',
-      workday: ['05:15', '07:30', '11:30', '14:15', '15:30', '19:30'],
-      saturday: ['06:30', '11:30', '15:30', '19:30'],
-      sunday: ['07:30', '13:30', '19:30'],
-    },
-    directionB: {
-      directionName: 'Smer B: Stragari → Autobuska Stanica',
-      workday: ['06:15', '08:35', '12:35', '15:20', '16:35', '20:30'],
-      saturday: ['07:35', '12:35', '16:35', '20:30'],
-      sunday: ['08:35', '14:35', '20:30'],
-    },
-  },
-  {
-    id: '9',
-    lineNumber: '9',
-    route: 'Ćiftina Ćuprija → Cvetojevac',
-    directionA: {
-      directionName: 'Smer A: Ćiftina Ćuprija → Cvetojevac',
-      workday: ['05:05', '06:00', '07:00', '08:15', '09:45', '11:15', '12:45', '14:10', '15:25', '16:45', '18:15', '19:45', '21:15'],
-      saturday: ['06:00', '08:00', '10:30', '13:00', '15:30', '18:00', '20:30'],
-      sunday: ['07:00', '10:00', '13:30', '17:00', '20:00'],
-    },
-    directionB: {
-      directionName: 'Smer B: Cvetojevac → Ćiftina Ćuprija',
-      workday: ['05:35', '06:30', '07:35', '08:50', '10:20', '11:50', '13:20', '14:45', '16:00', '17:20', '18:50', '20:20', '21:45'],
-      saturday: ['06:35', '08:35', '11:05', '13:35', '16:05', '18:35', '21:05'],
-      sunday: ['07:35', '10:35', '14:05', '17:35', '20:35'],
-    },
-  },
-];
+function cleanText(str: string): string {
+  return str.replace(/\s+/g, ' ').trim();
+}
 
-async function scrapeKgBus() {
-  console.log(`Fetching ${TARGET_URL}...`);
+function extractTimes(text: string): string[] {
+  const matches = text.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/g) || [];
+  return matches.map((t) => (t.length === 4 ? `0${t}` : t));
+}
+
+function splitByDay(text: string): {
+  workday: string[];
+  saturday: string[];
+  sunday: string[];
+} {
+  const satIdx = text.search(/\b(subota|субота)\b/i);
+  const sunIdx = text.search(/\b(nedelja|недеља)\b/i);
+
+  if (satIdx !== -1 || sunIdx !== -1) {
+    const firstBreak =
+      satIdx !== -1 && sunIdx !== -1 ? Math.min(satIdx, sunIdx) : Math.max(satIdx, sunIdx);
+
+    const workdayText = text.slice(0, firstBreak);
+    let saturdayText = '';
+    let sundayText = '';
+
+    if (satIdx !== -1 && sunIdx !== -1) {
+      if (satIdx < sunIdx) {
+        saturdayText = text.slice(satIdx, sunIdx);
+        sundayText = text.slice(sunIdx);
+      } else {
+        sundayText = text.slice(sunIdx, satIdx);
+        saturdayText = text.slice(satIdx);
+      }
+    } else if (satIdx !== -1) {
+      saturdayText = text.slice(satIdx);
+    } else {
+      sundayText = text.slice(sunIdx);
+    }
+
+    return {
+      workday: extractTimes(workdayText),
+      saturday: extractTimes(saturdayText),
+      sunday: extractTimes(sundayText),
+    };
+  }
+
+  return {
+    workday: extractTimes(text),
+    saturday: [],
+    sunday: [],
+  };
+}
+
+function parseRenderedSchedule(
+  lineNumber: string,
+  routeLabel: string,
+  renderedText: string
+): LineTimetable | null {
+  const normalized = cleanText(renderedText);
+  const idxA = normalized.search(/\b(Direction\s*[AА]|Smer\s*A|Смер\s*А)\b/i);
+  const idxB = normalized.search(/\b(Direction\s*[BБ]|Smer\s*B|Смер\s*Б)\b/i);
+
+  let rawA = normalized;
+  let rawB = '';
+
+  if (idxA !== -1 && idxB !== -1) {
+    if (idxA < idxB) {
+      rawA = normalized.slice(idxA, idxB);
+      rawB = normalized.slice(idxB);
+    } else {
+      rawB = normalized.slice(idxB, idxA);
+      rawA = normalized.slice(idxA);
+    }
+  } else if (idxA !== -1) {
+    rawA = normalized.slice(idxA);
+  } else if (idxB !== -1) {
+    rawB = normalized.slice(idxB);
+  }
+
+  const schedA = splitByDay(rawA);
+  const schedB = splitByDay(rawB);
+
+  const totalTimes =
+    schedA.workday.length +
+    schedA.saturday.length +
+    schedA.sunday.length +
+    schedB.workday.length +
+    schedB.saturday.length +
+    schedB.sunday.length;
+
+  if (totalTimes === 0) return null;
+
+  const cleanRoute = cleanText(routeLabel) || `Linija ${lineNumber}`;
+
+  return {
+    id: lineNumber,
+    lineNumber,
+    route: cleanRoute,
+    directionA: {
+      directionName: `Smer A: ${cleanRoute}`,
+      ...schedA,
+    },
+    directionB: {
+      directionName: `Smer B: Povratak`,
+      ...schedB,
+    },
+  };
+}
+
+async function waitForTimesToRender(page: Page, previousSnapshot: string): Promise<string> {
+  const start = Date.now();
+  const timeoutMs = 6000;
+
+  while (Date.now() - start < timeoutMs) {
+    const currentText = await page.evaluate(() => document.body.innerText || '');
+    const cleaned = cleanText(currentText);
+    const hasTime = /\b([01]?\d|2[0-3]):[0-5]\d\b/.test(cleaned);
+    if (hasTime && cleaned !== previousSnapshot) {
+      await page.waitForTimeout(250);
+      return cleanText((await page.evaluate(() => document.body.innerText)) || '');
+    }
+    await page.waitForTimeout(200);
+  }
+
+  return cleanText((await page.evaluate(() => document.body.innerText)) || '');
+}
+
+async function scrapeInteractiveTimetables() {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({
+    viewport: { width: 1280, height: 900 },
+  });
+
   try {
-    const res = await fetch(TARGET_URL);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    console.log(`Opening ${TARGET_URL}...`);
+    await page.goto(TARGET_URL, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.waitForTimeout(1000);
 
-    const scraped: LineTimetable[] = [];
+    // Locate clickable line controls (buttons, tabs, list items, or links)
+    const clickableSelector =
+      'button, [role="tab"], .vc_tta-tab, .nav-link, li, .line-item, a';
+    const candidateHandles = await page.locator(clickableSelector).all();
 
-    // Parse WordPress accordion / timetable blocks on kgbus.rs/red-voznje-3/
-    $('.vc_tta-panel, .elementor-accordion-item, table').each((_, el) => {
-      const titleText = $(el).find('.vc_tta-title-text, .elementor-accordion-title, caption, th').first().text().trim();
-      const lineMatch = titleText.match(/(?:Linija|Линија)?\s*(\d+[A-ZА-Я]?)\s*[-–:]\s*(.+)/i);
+    const lineTargets: { index: number; lineNumber: string; route: string }[] = [];
 
-      if (lineMatch) {
-        const lineNumber = lineMatch[1].trim();
-        const route = lineMatch[2].trim();
-        const rawTimes = $(el).text().match(/\b([01]?\d|2[0-3]):[0-5]\d\b/g) || [];
+    for (let i = 0; i < candidateHandles.length; i++) {
+      const handle = candidateHandles[i];
+      if (!(await handle.isVisible().catch(() => false))) continue;
 
-        if (rawTimes.length > 0) {
-          scraped.push({
-            id: lineNumber,
-            lineNumber,
-            route,
-            directionA: {
-              directionName: `Smer A: ${route}`,
-              workday: rawTimes,
-              saturday: [],
-              sunday: [],
-            },
-            directionB: {
-              directionName: `Smer B: Povratak`,
-              workday: [],
-              saturday: [],
-              sunday: [],
-            },
-          });
+      const rawText = cleanText((await handle.innerText().catch(() => '')) || '');
+      if (!rawText || rawText.length > 160) continue;
+
+      // Match line identifiers like "1", "16", "606", "Linija 17", "1 - Veliko Polje -> Desimirovac"
+      const match = rawText.match(
+        /^(?:Linija|Line|Линија)?\s*(\d+[A-Za-zА-Яа-я]?)\b(?:\s*[-–:|·→>]\s*(.+))?$/i
+      );
+
+      if (match) {
+        const lineNumber = match[1].trim();
+        const route = (match[2] || '').trim();
+        // Avoid duplicating the exact same line button index
+        if (!lineTargets.some((t) => t.lineNumber === lineNumber && t.route === route)) {
+          lineTargets.push({ index: i, lineNumber, route });
         }
       }
-    });
+    }
 
-    const finalOutput = scraped.length > 0 ? scraped : SEED_DATA;
+    console.log(`Found ${lineTargets.length} clickable bus line elements. Clicking each one...`);
+
+    const collected = new Map<string, LineTimetable>();
+
+    for (const target of lineTargets) {
+      const currentHandles = await page.locator(clickableSelector).all();
+      const el = currentHandles[target.index];
+      if (!el) continue;
+
+      const beforeText = cleanText((await page.evaluate(() => document.body.innerText)) || '');
+
+      try {
+        await el.scrollIntoViewIfNeeded();
+        await el.click({ timeout: 5000 });
+      } catch {
+        // Fallback DOM click if overlay/navigation intercepts normal click
+        await el.evaluate((node: HTMLElement) => node.click()).catch(() => {});
+      }
+
+      const afterText = await waitForTimesToRender(page, beforeText);
+      const parsed = parseRenderedSchedule(target.lineNumber, target.route, afterText);
+
+      if (parsed) {
+        collected.set(parsed.lineNumber, parsed);
+        console.log(`Captured line ${parsed.lineNumber} (${parsed.route})`);
+      } else {
+        console.warn(`No departure times detected after clicking line ${target.lineNumber}`);
+      }
+    }
+
+    const sorted = Array.from(collected.values()).sort((a, b) =>
+      a.lineNumber.localeCompare(b.lineNumber, undefined, { numeric: true })
+    );
+
     fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
-    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(finalOutput, null, 2), 'utf-8');
-    console.log(`Saved ${finalOutput.length} lines to ${OUTPUT_PATH}`);
-  } catch (err) {
-    console.warn('Live scrape failed, writing seed dataset instead:', err);
-    fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
-    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(SEED_DATA, null, 2), 'utf-8');
+    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(sorted, null, 2), 'utf-8');
+    console.log(`Saved ${sorted.length} bus lines to ${OUTPUT_PATH}`);
+  } finally {
+    await browser.close();
   }
 }
 
-scrapeKgBus();
+scrapeInteractiveTimetables().catch((err) => {
+  console.error('Interactive scraper failed:', err);
+  process.exit(1);
+});
